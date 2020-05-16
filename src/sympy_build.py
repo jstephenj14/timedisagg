@@ -1,9 +1,11 @@
 
 import sympy as sym
 
-import sympy
 from scipy.optimize import minimize
 from sympy.utilities.lambdify import lambdify
+import numpy as np
+from scipy.linalg import toeplitz
+import scipy.linalg as linalg
 
 
 x, y = sym.symbols('x, y')
@@ -11,6 +13,7 @@ A = sym.Matrix([[x-2, 0], [0, x-3]])
 func = A.det().as_poly().as_expr()
 my_func = lambdify((x),func)
 results = minimize(my_func,[0.1])
+
 
 
 from scipy import optimize

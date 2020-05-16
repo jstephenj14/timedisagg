@@ -172,12 +172,6 @@ z_logl = -m/2 - m*np.log(2*3.14)/2 - m*np.log(z_s_2)/2 - np.log(np.linalg.det(vc
 #
 # vcov_chk <-  C %*% CalcQ(0.5, pm) %*% t(C)
 
-x = np.array([[1, 5, 9, 13],
-              [2, 6, 10, 14],
-              [3, 7, 11, 15],
-              [4, 8, 12, 16]],
-             np.int32)
-
 # x[0:3,0:2]
 # array([[1, 5],
 #        [2, 6],
@@ -199,3 +193,55 @@ x = np.array([[1, 5, 9, 13],
 # Step 2: Redo implementation with parameterized rho with sympy somehow (lol)
 
 
+n_toep = len(X)
+
+
+b = y_l
+A = X_l
+m = A.shape[0]
+n = A.shape[1]
+Q, R = linalg.qr(X_l)
+R = R[~np.all(R == 0, axis=1)]
+c_bB = Q.T.dot(b)
+c_bB1 = c_bB[0:n]
+c_bB2 = c_bB[n:m]
+
+
+# rho = sym.symbols('rho')
+# pm = np.array(toeplitz(np.arange(n_toep)),dtype=np.float64)
+# sym_pm = sym.Matrix(pm)
+# rho**pm
+
+def func(rho):
+    CalcQ = (1 / (1 - rho**2))*(rho**pm)
+    vcov = (C.dot(CalcQ)).dot(C.T)
+    W = vcov #
+    B = np.linalg.cholesky(W) #
+    C_bB = Q.T.dot(B) #
+    C_bB1 = C_bB[0:n] #
+    C_bB2 = C_bB[n:m] #
+    C_bB2_T = C_bB2.T #
+    ft_C_bB2 = np.flip(C_bB2_T[0:C_bB2_T.shape[0],0:C_bB2_T.shape[1]])
+    PP, SS = linalg.qr(ft_C_bB2)
+    SS = SS[~np.all(SS == 0, axis=1)]
+    P = np.flip(PP[0:PP.shape[0], 0:PP.shape[1]])
+    S = np.flip(SS[0:SS.shape[0], 0:SS.shape[1]]).T
+    P1 = P[:, 0:n]
+    P2 = P[:, n:m]
+    u2 = solve_triangular(S,c_bB2)
+    v = P2.dot(u2)
+    v = v.reshape(len(v),1)
+    x = solve_triangular(R, c_bB1 - C_bB1.dot(v))
+    z_rss = u2.T.dot(u2)
+    z_s_2 = z_rss/m
+    z_logl = -m/2 - m*np.log(2*3.14)/2 - m*np.log(z_s_2)/2 - np.log(np.linalg.det(vcov))/2
+    return -z_logl
+
+func(0.5)
+
+from scipy.optimize import minimize
+from scipy.optimize import Bounds
+
+x0 = [0.9]
+bounds = Bounds([ -0.999],[ 0.999])
+minimize(func,x0,bounds=bounds)
