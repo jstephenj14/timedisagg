@@ -26,7 +26,6 @@ n_bc = 12 # number of back-casting periods, identified my mismatch of starting X
 n_fc = 2 # number of fore-casting periods, identified my mismatch of ending X and y
 
 conversion_weights = np.repeat(1, fr).reshape((1,fr))
-
 diagonal_identity = np.identity(n_l)
 conversion_weights_T = conversion_weights.T
 C = np.kron(diagonal_identity,conversion_weights_T).T
@@ -39,12 +38,13 @@ if n_bc > 0:
 
 pm = np.array(toeplitz(np.arange(n)),dtype=np.float64)
 
-X_l = C.dot(X.reshape(len(X),1))
 
 rho = 0.5
 
-CalcQ = (1 / (1 - rho**2))*(rho**pm)
-vcov = (C.dot(CalcQ)).dot(C.T)
+X_l = C.dot(X.reshape(len(X),1))
+
+# CalcQ = (1 / (1 - rho**2))*(rho**pm)
+# vcov = (C.dot(CalcQ)).dot(C.T)
 
 def CalcGLS(y, X, vcov, stats=False):
 
@@ -57,7 +57,7 @@ def CalcGLS(y, X, vcov, stats=False):
 
     B = np.linalg.cholesky(W)
 
-    Q, R = linalg.qr(X_l)
+    Q, R = linalg.qr(X)
     R = R[~np.all(R == 0, axis=1)]
 
     c_bB = Q.T.dot(b)
@@ -89,13 +89,12 @@ def CalcGLS(y, X, vcov, stats=False):
     x = solve_triangular(R, c_bB1 - C_bB1.dot(v)) # z$coefficients
 
     z["coefficients"] = x
-    z["rss"] = u2.T.dot(u2)
 
-    if not stats:
-        z["s_2"] = z["rss"]/m
-        z["logl"] = -m / 2 - m * np.log(2 * math.pi) / 2 - m * np.log(z["s_2"]) / 2 - np.log(np.linalg.det(vcov)) / 2
-        return -z["logl"]
-    else:
+    z["rss"] = u2.T.dot(u2)
+    z["s_2"] = z["rss"] / m
+    z["logl"] = -m / 2 - m * np.log(2 * math.pi) / 2 - m * np.log(z["s_2"]) / 2 - np.log(np.linalg.det(vcov)) / 2
+
+    if stats:
         z["s_2_gls"] = z["rss"]/(m-n)
 
         # vcov
@@ -137,16 +136,16 @@ def CalcGLS(y, X, vcov, stats=False):
         # z$vcov_inv < - vcov_inv
         z["vcov_inv"] = vcov_inv
 
-        return z
+    return z
 
 
 def func_optimize(rho):
     CalcQ = (1 / (1 - rho ** 2)) * (rho ** pm)
     vcov = C.dot(CalcQ).dot(C.T)
-    return CalcGLS(y_l, X_l, vcov)
+    return -CalcGLS(y_l, X_l, vcov)["logl"]
 
 
-x0 = [0.1]
+x0 = np.asarray([0.1])
 bounds = Bounds([-0.999], [0.999])
 min_obj = minimize(func_optimize, x0, bounds=bounds)
 
@@ -168,13 +167,10 @@ Q_real = (1 / (1 - rho_min**2))*(rho_min**pm)
 Q_l_real = C.dot(Q_real).dot(C.T)
 
 
-list1 = CalcGLS(y_l, X_l, Q_l_real, stats=True)
-
 # final GLS estimation (aggregated)
 z = CalcGLS(y_l, X_l, Q_l_real, stats=True)
 
-
-p = X.reshape(len(X),1).dot(z["coefficients"])
+p = X.reshape(len(X), 1).dot(z["coefficients"])
 
 # distribution matrix
 #D < - Q % * % t(C) % * % z$vcov_inv
@@ -183,11 +179,8 @@ D = Q_real.dot(C.T).dot(z["vcov_inv"])
 # low frequency residuals
 # u_l < - y_l - C % * % p
 
-u_l = y_l.reshape(len(y_l),1) - C.dot(p)
+u_l = y_l.reshape(len(y_l), 1) - C.dot(p)
 
 # final series
 # y < - p + D % * % u_l
 y = p + D.dot(u_l)
-
-# [y,y_bar,vcov_inv] = list1
-# ((y.reshape(len(y),1)-y_bar).T).dot(vcov_inv).dot(y.reshape(len(y),1)-y_bar)
