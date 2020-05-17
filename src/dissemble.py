@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from scipy.linalg import toeplitz
 import scipy.linalg as linalg
-
 from scipy.linalg import solve_triangular
 
 
@@ -192,10 +191,6 @@ z_logl = -m/2 - m*np.log(2*3.14)/2 - m*np.log(z_s_2)/2 - np.log(np.linalg.det(vc
 
 # Step 2: Redo implementation with parameterized rho with sympy somehow (lol)
 
-
-n_toep = len(X)
-
-
 b = y_l
 A = X_l
 m = A.shape[0]
@@ -205,15 +200,12 @@ R = R[~np.all(R == 0, axis=1)]
 c_bB = Q.T.dot(b)
 c_bB1 = c_bB[0:n]
 c_bB2 = c_bB[n:m]
+CalcQ = (1 / (1 - rho ** 2)) * (rho ** pm)
+vcov = (C.dot(CalcQ)).dot(C.T)
 
+def func(rho, stats=False):
 
-# rho = sym.symbols('rho')
-# pm = np.array(toeplitz(np.arange(n_toep)),dtype=np.float64)
-# sym_pm = sym.Matrix(pm)
-# rho**pm
-
-def func(rho):
-    CalcQ = (1 / (1 - rho**2))*(rho**pm)
+    CalcQ = (1 / (1 - rho ** 2)) * (rho ** pm)
     vcov = (C.dot(CalcQ)).dot(C.T)
     W = vcov #
     B = np.linalg.cholesky(W) #
@@ -235,13 +227,39 @@ def func(rho):
     z_rss = u2.T.dot(u2)
     z_s_2 = z_rss/m
     z_logl = -m/2 - m*np.log(2*3.14)/2 - m*np.log(z_s_2)/2 - np.log(np.linalg.det(vcov))/2
+
+    if stats == True:
+        s_2_gls = z_rss/(m-n)
+        Lt = C_bB1.dot(P1)
+        # R_inv < - backsolve(R, diag(n))
+        R_inv = solve_triangular(R, np.identity(n))
+        # C < - R_inv % * % Lt % * % t(Lt) % * % t(R_inv)
+        C_stats = R_inv.dot(Lt).dot(Lt.T).dot(R_inv.T)
+
+
     return -z_logl
 
-func(0.5)
+# func(0.5)
 
 from scipy.optimize import minimize
 from scipy.optimize import Bounds
 
-x0 = [0.9]
+x0 = [0.1]
 bounds = Bounds([ -0.999],[ 0.999])
-minimize(func,x0,bounds=bounds)
+min_obj = minimize(func,x0,bounds=bounds)
+
+rho_min = min_obj["x"][0]
+print(rho_min)
+
+# else if (method %in% c(
+#     "chow-lin-maxlog", "chow-lin-minrss-ecotrim",
+#     "chow-lin-minrss-quilis", "chow-lin-fixed",
+#     "dynamic-maxlog", "dynamic-minrss",
+#     "dynamic-fixed", "ols"
+# Q <- CalcQ(rho = rho, pm = pm)
+
+CalcQ = (1 / (1 - rho_min**2))*(rho_min**pm)
+
+Q_l = C.dot(CalcQ).dot(C.T)
+
+# z <- CalcGLS(y = y_l, X = X_l, vcov = Q_l)
