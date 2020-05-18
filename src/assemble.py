@@ -184,3 +184,16 @@ u_l = y_l.reshape(len(y_l), 1) - C.dot(p)
 # final series
 # y < - p + D % * % u_l
 y = p + D.dot(u_l)
+
+
+### Assembling Q_Lit
+temp = np.identity(5)
+np.diag(temp)
+
+def fill_off_diag(self, matrix, val):
+    for r, row in enumerate(matrix):
+        for c, column in enumerate(row):
+            if r - c == 1:
+                matrix[r,c] = val
+    return matrix
+

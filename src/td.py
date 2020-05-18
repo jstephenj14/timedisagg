@@ -6,17 +6,23 @@ import scipy.linalg as linalg
 from scipy.linalg import solve_triangular
 from scipy.optimize import minimize
 from scipy.optimize import Bounds
-
+import sys
 
 class TempDisagg:
 
-    def __init__(self, conversion, fr, n_bc, n_fc, rho = 0.5):
+    def __init__(self, conversion, fr, n_bc, n_fc, method="chow-lin-maxlog", rho_start=0.5, truncated_rho=0,
+                 fixed_rho=0.5):
         self.conversion = conversion
         self.fr = fr
         self.n_bc = n_bc
         self.n_fc = n_fc
-        self.rho = rho
+        self.rho_start = rho_start
+        self.method = method
+        self.fixed_rho = fixed_rho
         self.n_l = None
+        self.truncated_rho = truncated_rho
+
+        self.rho_min = None
 
     def generate_conversion_matrix(self):
 
@@ -32,27 +38,39 @@ class TempDisagg:
 
         return conversion_matrix
 
-    def calculate_Q(self, pm):
-        return (1 / (1 - self.rho ** 2)) * (self.rho ** pm)
+    def fill_off_diag(self, matrix, val):
+        for r, row in enumerate(matrix):
+            for c, column in enumerate(row):
+                if r - c == 1:
+                    matrix[r, c] = val
+        return matrix
 
-    def calculate_QLit(self, X):
+    def calculate_Q(self, pm, rho):
+        return (1 / (1 - rho ** 2)) * (rho ** pm)
 
-        """TODO"""
+    def calculate_QLit(self, X, rho):
 
         n = X.shape[0]
 
-        # calclation of S
         H = np.identity(n)
         D = np.identity(n)
-        # diag(D[2:nrow(D), 1:(ncol(D) - 1)]) < - -1
-        # diag(H[2:nrow(H), 1:(ncol(H) - 1)]) < - -rho
-        # Q_Lit < - solve(t(D) % * % t(H) % * % H % * % D)
+        H = self.fill_off_diag(H, -1)
+        D = self.fill_off_diag(D, -rho)
 
+        Q_Lit = np.linalg.inv(D.T.dot(H.T).dot(H).dot(D))
 
-        # output
-        Q_Lit
+        return Q_Lit
 
-        return (1 / (1 - self.rho ** 2)) * (self.rho ** pm)
+    def calculate_dyn_adj(self, X, rho):
+        n = len(X)
+        diag = np.identity(n)
+        diag_rho = self.fill_off_diag(diag, rho)
+        print(X.shape)
+        print(np.linalg.inv(diag_rho).shape)
+        print(np.hstack((rho, np.zeros(n-1))).shape)
+        print(np.hstack((rho, np.zeros(n-1))).reshape(n, 1).shape)
+        print(np.hstack((X.reshape(n,1), np.hstack((rho, np.zeros(n-1))).reshape(n, 1))).shape)
+        return np.linalg.inv(diag_rho).dot(np.hstack((X.reshape(n,1), np.hstack((rho, np.zeros(n-1))).reshape(n, 1))))
 
     def CalcGLS(self, y, X, vcov, stats=False):
 
@@ -110,6 +128,8 @@ class TempDisagg:
             R_inv = solve_triangular(R, np.identity(n))
             C = R_inv.dot(Lt).dot(Lt.T).dot(R_inv.T)
 
+            print(z)
+            print(C)
             z["se"] = np.sqrt(np.identity(math.floor(z["s_2_gls"] * C)))
 
             vcov_inv = np.linalg.inv(vcov)
@@ -132,15 +152,125 @@ class TempDisagg:
     def __call__(self, X, y_l):
 
         n = len(X)
-        n_l = len(y_l)
+        self.n_l = len(y_l)
 
         c_matrix = self.generate_conversion_matrix()
 
         X_l = c_matrix.dot(X.reshape(len(X), 1))
         pm = np.array(toeplitz(np.arange(n)), dtype=np.float64)
 
-        # Q = self.calculate_Q(pm)
-        # vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
+        if self.method == "chow-lin-maxlog":
+            def objective_fn(rho):
+                Q = self.calculate_Q(pm, rho)
+                vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
+                return -1 * self.CalcGLS(y_l, X_l, vcov)["logl"]
+        elif self.method == "chow-lin-minrss-ecotrim":
+            def objective_fn(rho):
+                Q = rho**pm
+                vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
+                return self.CalcGLS(y_l, X_l, vcov)["rss"]
+        elif self.method == "chow-lin-minrss-quilis":
+            def objective_fn(rho):
+                Q = self.calculate_Q(pm, rho)
+                vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
+                return self.CalcGLS(y_l, X_l, vcov)["rss"]
+        elif self.method == "litterman-maxlog":
+            def objective_fn(rho):
+                Q_Lit = self.calculate_QLit(X, rho)
+                vcov = (c_matrix.dot(Q_Lit)).dot(c_matrix.T)
+                return -1 * self.CalcGLS(y_l, X_l, vcov)["logl"]
+        elif self.method == "litterman-minrss":
+            def objective_fn(rho):
+                Q_Lit = self.calculate_QLit(X, rho)
+                vcov = (c_matrix.dot(Q_Lit)).dot(c_matrix.T)
+                return self.CalcGLS(y_l, X_l, vcov)["rss"]
+        elif self.method == "dynamic-maxlog":
+            def objective_fn(rho):
+                X_adj = self.calculate_dyn_adj(X, rho)
+                X_l_adj = c_matrix.dot(X_adj)
+                Q = self.calculate_Q(pm, rho)
+                vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
+                return -1 * self.CalcGLS(y_l, X_l_adj, vcov)["logl"]
+        elif self.method == "dynamic-minrss":
+            def objective_fn(rho):
+                X_adj = self.calculate_dyn_adj(X,rho)
+                X_l_adj = c_matrix.dot(X_adj)
+                Q = self.calculate_Q(pm, rho)
+                vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
+                return -1 * self.CalcGLS(y_l, X_l_adj, vcov)["rss"]
+
+        else:
+            sys.exit("method invalid")
+
+        if self.method in [ "chow-lin-maxlog", "chow-lin-minrss-ecotrim","chow-lin-minrss-quilis", "litterman-maxlog",
+                            "litterman-minrss", "dynamic-maxlog", "dynamic-minrss"]:
+
+            x0 = np.asarray([0.1])
+            bounds = Bounds([-0.999], [0.999])
+            min_obj = minimize(objective_fn, x0, bounds=bounds)
+
+            self.rho_min = min_obj["x"][0]
+
+            if self.rho_min < self.truncated_rho:
+                self.rho_min = self.truncated_rho
+            elif self.method in ["fernandez", "rho"]:
+                self.rho_min = 0
+            elif self.method in ["chow-lin-fixed", "litterman-fixed", "dynamic-fixed"]:
+                self.rho_min = self.fixed_rho
+
+        if self.method in ["chow-lin-maxlog", "chow-lin-minrss-ecotrim",
+                            "chow-lin-minrss-quilis", "chow-lin-fixed",
+                            "dynamic-maxlog", "dynamic-minrss",
+                            "dynamic-fixed", "ols"]:
+            Q_real = self.calculate_Q(pm, self.rho_min)
+        elif self.method in ["fernandez", "litterman-maxlog", "litterman-minrss","litterman-fixed"]:
+            Q_real = self.calculate_QLit(X, self.rho_min)
+
+        if self.method in ["dynamic-maxlog", "dynamic-minrss", "dynamic-fixed"] and self.rho_min != 0:
+            X = self.calculate_dyn_adj(X, self.rho_min)
+            X_l = c_matrix.dot(X)
+
+        Q_l_real = c_matrix.dot(Q_real).dot(c_matrix.T)
+        z = self.CalcGLS(y_l, X_l, Q_l_real, stats=True)
+
+        p = X.reshape(len(X), 1).dot(z["coefficients"])
+        D = Q_real.dot(c_matrix.T).dot(z["vcov_inv"])
+
+        u_l = y_l.reshape(len(y_l), 1) - c_matrix.dot(p)
+
+        y = p + D.dot(u_l)
+
+        return y
 
 
+y_l_data = pd.read_csv("C:/Users/jstep/Documents/y_l.csv")
+X_data = pd.read_csv("C:/Users/jstep/Documents/X.csv")
 
+y_l = np.asarray(y_l_data["V1"])
+X = np.asarray(X_data["exports.q"])
+
+# td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2)
+# td_obj(X, y_l)
+#
+# td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="litterman-maxlog")
+# td_obj(X, y_l)
+#
+# td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="chow-lin-minrss-ecotrim")
+# td_obj(X, y_l)
+# print(td_obj.rho_min)
+#
+# td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="chow-lin-minrss-quilis")
+# print(td_obj(X, y_l))
+# print(td_obj.rho_min)
+#
+# td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="litterman-maxlog")
+# print(td_obj(X, y_l))
+# print(td_obj.rho_min)
+#
+# td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="litterman-minrss")
+# print(td_obj(X, y_l))
+# print(td_obj.rho_min)
+
+td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="dynamic-maxlog")
+print(td_obj(X, y_l))
+print(td_obj.rho_min)
