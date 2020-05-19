@@ -38,7 +38,6 @@ if n_bc > 0:
 
 pm = np.array(toeplitz(np.arange(n)),dtype=np.float64)
 
-
 rho = 0.5
 
 X_l = C.dot(X.reshape(len(X),1))

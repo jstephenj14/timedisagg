@@ -64,12 +64,12 @@ class TempDisagg:
     def calculate_dyn_adj(self, X, rho):
         n = len(X)
         diag = np.identity(n)
-        diag_rho = self.fill_off_diag(diag, rho)
-        print(X.shape)
-        print(np.linalg.inv(diag_rho).shape)
-        print(np.hstack((rho, np.zeros(n-1))).shape)
-        print(np.hstack((rho, np.zeros(n-1))).reshape(n, 1).shape)
-        print(np.hstack((X.reshape(n,1), np.hstack((rho, np.zeros(n-1))).reshape(n, 1))).shape)
+        diag_rho = self.fill_off_diag(diag, -rho)
+        # print(X.shape)
+        # print(np.linalg.inv(diag_rho).shape)
+        # print(np.hstack((rho, np.zeros(n-1))).shape)
+        # print(np.hstack((rho, np.zeros(n-1))).reshape(n, 1).shape)
+        # print(np.hstack((X.reshape(n,1), np.hstack((rho, np.zeros(n-1))).reshape(n, 1))).shape)
         return np.linalg.inv(diag_rho).dot(np.hstack((X.reshape(n,1), np.hstack((rho, np.zeros(n-1))).reshape(n, 1))))
 
     def CalcGLS(self, y, X, vcov, stats=False):
@@ -80,6 +80,10 @@ class TempDisagg:
 
         m = A.shape[0]
         n = A.shape[1]
+
+        print("inside CalcGLS")
+        print(m)
+        print(n)
 
         B = np.linalg.cholesky(W)
 
@@ -112,7 +116,16 @@ class TempDisagg:
 
         z = dict()
 
-        x = solve_triangular(R, c_bB1 - C_bB1.dot(v))
+        if len(c_bB1) > 1:
+            RHS = c_bB1.reshape(len(c_bB1), 1) - C_bB1.dot(v)
+        else:
+            RHS = c_bB1 - C_bB1.dot(v)
+
+        print("R")
+        print(R)
+        print("RHS[0")
+        print(RHS[0])
+        x = solve_triangular(R, RHS[0])
 
         z["coefficients"] = x
 
@@ -125,12 +138,13 @@ class TempDisagg:
             z["s_2_gls"] = z["rss"] / (m - n)
 
             Lt = C_bB1.dot(P1)
-            R_inv = solve_triangular(R, np.identity(n))
+            R_inv = np.linalg.inv(R)
+
+            if Lt.shape[1] > 1:
+                R_inv = np.append(R_inv, 0).reshape(1, 2)
             C = R_inv.dot(Lt).dot(Lt.T).dot(R_inv.T)
 
-            print(z)
-            print(C)
-            z["se"] = np.sqrt(np.identity(math.floor(z["s_2_gls"] * C)))
+            # z["se"] = np.sqrt(np.identity(math.floor(z["s_2_gls"] * C)))
 
             vcov_inv = np.linalg.inv(vcov)
             e = np.repeat(1, m).reshape((m, 1))
@@ -163,6 +177,7 @@ class TempDisagg:
             def objective_fn(rho):
                 Q = self.calculate_Q(pm, rho)
                 vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
+                print("In objective chin-lin: "+str(X_l.shape))
                 return -1 * self.CalcGLS(y_l, X_l, vcov)["logl"]
         elif self.method == "chow-lin-minrss-ecotrim":
             def objective_fn(rho):
@@ -188,12 +203,13 @@ class TempDisagg:
             def objective_fn(rho):
                 X_adj = self.calculate_dyn_adj(X, rho)
                 X_l_adj = c_matrix.dot(X_adj)
+                print("In objective dyn: "+str(X_l_adj.shape))
                 Q = self.calculate_Q(pm, rho)
                 vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
                 return -1 * self.CalcGLS(y_l, X_l_adj, vcov)["logl"]
         elif self.method == "dynamic-minrss":
             def objective_fn(rho):
-                X_adj = self.calculate_dyn_adj(X,rho)
+                X_adj = self.calculate_dyn_adj(X, rho)
                 X_l_adj = c_matrix.dot(X_adj)
                 Q = self.calculate_Q(pm, rho)
                 vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
@@ -202,7 +218,7 @@ class TempDisagg:
         else:
             sys.exit("method invalid")
 
-        if self.method in [ "chow-lin-maxlog", "chow-lin-minrss-ecotrim","chow-lin-minrss-quilis", "litterman-maxlog",
+        if self.method in [ "chow-lin-maxlog", "chow-lin-minrss-ecotrim", "chow-lin-minrss-quilis", "litterman-maxlog",
                             "litterman-minrss", "dynamic-maxlog", "dynamic-minrss"]:
 
             x0 = np.asarray([0.1])
@@ -218,6 +234,8 @@ class TempDisagg:
             elif self.method in ["chow-lin-fixed", "litterman-fixed", "dynamic-fixed"]:
                 self.rho_min = self.fixed_rho
 
+        print("self.rho_min ")
+        print(self.rho_min)
         if self.method in ["chow-lin-maxlog", "chow-lin-minrss-ecotrim",
                             "chow-lin-minrss-quilis", "chow-lin-fixed",
                             "dynamic-maxlog", "dynamic-minrss",
@@ -228,17 +246,23 @@ class TempDisagg:
 
         if self.method in ["dynamic-maxlog", "dynamic-minrss", "dynamic-fixed"] and self.rho_min != 0:
             X = self.calculate_dyn_adj(X, self.rho_min)
+            print("inside if:"+str(X.shape))
             X_l = c_matrix.dot(X)
 
         Q_l_real = c_matrix.dot(Q_real).dot(c_matrix.T)
         z = self.CalcGLS(y_l, X_l, Q_l_real, stats=True)
 
-        p = X.reshape(len(X), 1).dot(z["coefficients"])
+        # print(z["coefficients"].shape)
+        # print(X.reshape(len(X), 2).shape)
+        print("z['coefficients']:")
+        print(z["coefficients"])
+
+        p = X.reshape(X.shape[0], 1).dot(z["coefficients"])
         D = Q_real.dot(c_matrix.T).dot(z["vcov_inv"])
 
-        u_l = y_l.reshape(len(y_l), 1) - c_matrix.dot(p)
+        u_l = y_l.reshape(len(y_l), 1) - c_matrix.dot(p).reshape(len(c_matrix.dot(p)),1)
 
-        y = p + D.dot(u_l)
+        y = p.reshape(len(p),1) + D.dot(u_l)
 
         return y
 
@@ -251,7 +275,7 @@ X = np.asarray(X_data["exports.q"])
 
 # td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2)
 # td_obj(X, y_l)
-#
+
 # td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="litterman-maxlog")
 # td_obj(X, y_l)
 #
