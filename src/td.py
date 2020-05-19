@@ -221,7 +221,7 @@ class TempDisagg:
                 X_l_adj = c_matrix.dot(X_adj)
                 Q = self.calculate_Q(pm, rho)
                 vcov = (c_matrix.dot(Q)).dot(c_matrix.T)
-                return -1 * self.CalcGLS(y_l, X_l_adj, vcov)["rss"]
+                return self.CalcGLS(y_l, X_l_adj, vcov)["rss"]
 
         else:
             sys.exit("method invalid")
@@ -308,3 +308,7 @@ X = np.asarray(X_data["exports.q"])
 # td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="dynamic-maxlog")
 # print(td_obj(X, y_l))
 # print(td_obj.rho_min)
+
+td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="dynamic-minrss")
+print(td_obj(X, y_l))
+print(td_obj.rho_min)
