@@ -97,7 +97,7 @@ Q_l_real = C.dot(Q_real).dot(C.T)
 y = y_l
 b = y_l
 A = X_l_adj
-X = X_l
+X = X_l_adj
 vcov = Q_l_real
 W = vcov
 
@@ -147,7 +147,7 @@ if len(c_bB1)> 1:
 else:
     RHS = c_bB1 - C_bB1.dot(v)
 
-x = solve_triangular(R, RHS[0])
+x = solve_triangular(R, RHS)
 
 z["coefficients"] = x
 
@@ -186,7 +186,7 @@ if True:
 
 
 # Re-run to revert to X and C before calcgls was run
-X = np.asarray(X_data["exports.q"])
+# X must be X_dash
 C = np.kron(diagonal_identity,conversion_weights_T).T
 
 if n_fc > 0:
@@ -196,7 +196,7 @@ if n_bc > 0:
     C = np.hstack((np.zeros((C.shape[0], n_bc)), C))
 ####
 
-p = X.reshape(len(X), 1).dot(z["coefficients"])
+p = X_dash.dot(z["coefficients"])
 
 # distribution matrix
 #D < - Q % * % t(C) % * % z$vcov_inv

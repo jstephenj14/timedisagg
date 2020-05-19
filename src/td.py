@@ -117,15 +117,22 @@ class TempDisagg:
         z = dict()
 
         if len(c_bB1) > 1:
-            RHS = c_bB1.reshape(len(c_bB1), 1) - C_bB1.dot(v)
+            # print( " c_bB1.reshape(len(c_bB1), 1)")
+            # print( c_bB1.reshape(len(c_bB1), 1) )
+            # print(" C_bB1.dot(v)")
+            # print( C_bB1.dot(v))
+            c_bB1_reshaped = c_bB1.reshape(len(c_bB1), 1)
+            C_bB1_dot_v = C_bB1.dot(v)
+
+            RHS = c_bB1_reshaped - C_bB1_dot_v
+
         else:
             RHS = c_bB1 - C_bB1.dot(v)
 
         print("R")
         print(R)
-        print("RHS[0")
-        print(RHS[0])
-        x = solve_triangular(R, RHS[0])
+
+        x = solve_triangular(R, RHS)
 
         z["coefficients"] = x
 
@@ -140,8 +147,8 @@ class TempDisagg:
             Lt = C_bB1.dot(P1)
             R_inv = np.linalg.inv(R)
 
-            if Lt.shape[1] > 1:
-                R_inv = np.append(R_inv, 0).reshape(1, 2)
+            # if Lt.shape[1] > 1:
+            #     R_inv = np.append(R_inv, 0).reshape(1, 2)
             C = R_inv.dot(Lt).dot(Lt.T).dot(R_inv.T)
 
             # z["se"] = np.sqrt(np.identity(math.floor(z["s_2_gls"] * C)))
@@ -161,6 +168,7 @@ class TempDisagg:
             z["bic"] = np.log(z["rss"] / m) + ((n / m) * np.log(m))
             z["vcov_inv"] = vcov_inv
 
+        self.z = z
         return z
 
     def __call__(self, X, y_l):
@@ -245,9 +253,11 @@ class TempDisagg:
             Q_real = self.calculate_QLit(X, self.rho_min)
 
         if self.method in ["dynamic-maxlog", "dynamic-minrss", "dynamic-fixed"] and self.rho_min != 0:
-            X = self.calculate_dyn_adj(X, self.rho_min)
+            X = self.calculate_dyn_adj(X, self.rho_min).reshape(X.shape[0], 2)
             print("inside if:"+str(X.shape))
             X_l = c_matrix.dot(X)
+        else:
+            X = X.reshape(len(X),1)
 
         Q_l_real = c_matrix.dot(Q_real).dot(c_matrix.T)
         z = self.CalcGLS(y_l, X_l, Q_l_real, stats=True)
@@ -257,7 +267,7 @@ class TempDisagg:
         print("z['coefficients']:")
         print(z["coefficients"])
 
-        p = X.reshape(X.shape[0], 1).dot(z["coefficients"])
+        p = X.dot(z["coefficients"])
         D = Q_real.dot(c_matrix.T).dot(z["vcov_inv"])
 
         u_l = y_l.reshape(len(y_l), 1) - c_matrix.dot(p).reshape(len(c_matrix.dot(p)),1)
@@ -295,6 +305,6 @@ X = np.asarray(X_data["exports.q"])
 # print(td_obj(X, y_l))
 # print(td_obj.rho_min)
 
-td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="dynamic-maxlog")
-print(td_obj(X, y_l))
-print(td_obj.rho_min)
+# td_obj = TempDisagg(conversion="sum", fr=4, n_bc=12, n_fc=2, method="dynamic-maxlog")
+# print(td_obj(X, y_l))
+# print(td_obj.rho_min)
