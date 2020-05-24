@@ -54,7 +54,7 @@ The input dataset to the TempDisagg's object call should have the following form
 
 The `index` column holds the low-frequency time periods from which high-frequency time series (`grain`) are generated. 
 `y` is the data to be disaggregated and `X` is the high-frequency regressor. In this case, `X` is the quarter-level 
-export numbers why `y` holds yearly sales numbers. This data is available under `tests/sample_data.csv` along with a `demo-run.py`.
+export numbers while `y` holds yearly sales numbers. This data is available under `tests/sample_data.csv` along with a `demo-run.py`.
 
 Note that the current package does not accept `Nan` values in any of these columns except for valid backcasting and forecasting periods in the `y` column.
 For example, in the above case, the package is expected to provide backcasted values for the 12 quarters from 1972 to 1974 and 2 forecasted quarters for 2011.
@@ -96,5 +96,5 @@ Detailed documentation will follow, but for now the different methods can be ref
 "dynamic-maxlog" 
 "dynamic-minrss"
 ```
-And conversions can be selected by `sum`,`average`,`first` and `last` as available by the R package.
+And conversions can be selected by `sum`,`average`,`first` and `last` as available in the R package.
 
