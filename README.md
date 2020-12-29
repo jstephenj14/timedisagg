@@ -1,5 +1,8 @@
 # Temporal Disaggregation of Time Series Data
 
+Developed and documented by **John Stephen Joseph Arul Selvam**
+
+# Overview
 This package implements time disaggregation models inspired heavily by [R's tempdisagg package](https://github.com/christophsax/tempdisagg). The package
 currently has the following methods implemented:
 
